@@ -43,7 +43,7 @@ Segment.prototype.is_inside = function(x, y){
 Segment.prototype.draw = function(){
     push();
     translate(width/2, height/2);
-    stroke(0);
+    stroke(100);
     fill(this.color);
     let pt = polarToRect(this.r2, this.theta1);
     beginShape();

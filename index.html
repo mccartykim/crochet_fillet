@@ -59,15 +59,90 @@ Segment.prototype.draw = function(){
 }
 
 Segment.prototype.sample_image = function(image){
+    let colorsum = [0,0,0,0];
+    let div = 4;
+    let rstep = (this.r1-this.r2)/div;
+    //console.log(rstep);
+    for(let r = this.r2; r < this.r1; r+=rstep){
+        let thetastep = (this.theta2 - this.theta1) /div;
+    //console.log(thetastep);
+        for(let t = this.theta1; t < this.theta2; t+= thetastep){
+            let p = polarToRect(r, t)
+            //console.log(p);
+            let start = Math.round(p.x+width/2) +  Math.round((p.y+height/2))*image.width;
+            start *= 4;
+            let pixel = image.pixels.slice(start, start+4)
+            pixel.forEach((e, i) => colorsum[i] += e);
+        }
+    }
+    console.log("Done!");
+    colorsum.forEach((e,i) => {colorsum[i] = colorsum[i] / (div*div)})
+    this.color = color(colorsum);
+}
+
+// return a list of neighbors for the next step in dithering
+// Right now: next one in sequence plus everything touching in next row
+Segment.prototype.get_neighbors = function(){
+    let neighbors = new Set();
+    rows.forEach((row, i, arr)=>{
+        if (row[0].r1 == this.r1){
+            row.forEach((seg, i, arr) => {
+                if (seg === this){
+                    //index found
+                    if (i+1 < arr.length)
+                        neighbors.add(arr[i+1]);
+                    //otherwise, that spot was already processed, do not send error!
+                }
+            });
+            if (i+1 < arr.length){
+                let nextRow = arr[i+1];
+                nextRow.forEach((seg, i, arr)=>{
+                    //if above
+                    if ((seg.theta2 >= this.theta1 && seg.theta2 < this.theta2)|| 
+                        (seg.theta1 >= this.theta1 && seg.theta2 <= this.theta2)||
+                        (seg.theta1 <= this.theta2 && seg.theta2 > this.theta2)){
+                        neighbors.add(seg);
+                    }
+                })
+            }
+        }
+    })
+    console.log(neighbors);
+    return neighbors;
+}
+
+// black and white for now
+Segment.prototype.dither = function(threshold){
+    let divisor = 6;
+    let lastColor = this.color;
+    this.color = lightness(lastColor) > threshold? color(255): color(0);
+    //get neighbors and pass on error
+    let neighbors = this.get_neighbors();
+    console.log(neighbors.size, " Neighbors");
+    let error = [0,0,0,0];
+    this.color.levels.forEach((e, i) =>{
+        error[i] = (e - lastColor.levels[i])/divisor;
+    })
+    neighbors.forEach((n)=>{
+        let nc = color(n.color);
+        nc.levels.forEach((e,i,arr) =>{
+            arr[i] += error[i];
+        })
+        n.color = color(nc.levels);
+    })
+}
+
+/*
+Segment.prototype.sample_image = function(image){
     // TODO optimize by setting bounding box around rough area
     let colorsum = [0,0,0,0];
     //bounding box
     let l1 = this.r1*2;
     let l2 = sqrt(2) * this.r2;
     for (let x = (width -  l1)/2 ; x < ( width +  l1)/2 ; x++){
-        /*if (x > (width - l2)/2 && x < (width + l2)/2)
-            x = (width +l2)/2;
-            */
+        //if (x > (width - l2)/2 && x < (width + l2)/2)
+            //x = (width +l2)/2;
+            ///
         for (let y = ( height- l1)/2; y < ( height + l1)/2 ; y++){
             /*if (y > (height - l2)/2 && y < (height + l2)/2)
                 y = (height +l2)/2;
@@ -76,9 +151,12 @@ Segment.prototype.sample_image = function(image){
             //(y < (height - l2)/2 || y > (height + l2)/2) && 
             /*if (x>(width-l2)/2 && x <(width+l2)/2 && y >(height-l2)/2 && y < (height+l2)/2){
                 y = (height+l2)/2;
-            }*/
+            }/
             if(this.is_inside(x-width/2, y-height/2)){
-                let c = image.get(Math.round(x), Math.round(y));
+            let start = Math.round(x+width/2) +  Math.round(y+height/2)*image.width;
+            start *= 4;
+            let pixel = image.pixels.slice(start, start+4)
+            let c = pixel;
                 c.forEach(function(e, i){
                     colorsum[i] += e;
                     });
@@ -90,6 +168,7 @@ Segment.prototype.sample_image = function(image){
     this.color = color(colorsum[0]/this.area, colorsum[1]/this.area, 
                     colorsum[2]/this.area, colorsum[3]/this.area);
 }
+    */
 
 function make_pattern(row_count, base_stitch_count, row_height){
     segments = [];
@@ -195,22 +274,41 @@ function sample_image_polar(r, theta, image){
 
 var original_image;
 function preload(){
-    original_image = loadImage("http://i.imgur.com/hkVlIOF.png");
+    let path = getURLParams()["src"] || "https://i.imgur.com/PQsJsGD.png";
+    original_image = loadImage(path);
+}
+
+function imageWrapper(image){
+    this.pixels = image.pixels;
+}
+
+imageWrapper.prototype.get = function(x, y){
+    let start = Math.round(y*this.img.width) + Math.round(x);
+    return this.pixels.slice(start, start+4);
+
 }
 
 function setup(){
     //make image 800 px in smaller dimension
+    let rows = parseInt(getURLParams()["rows"]) || 40;
+    let base_stitch = parseInt(getURLParams()["basestitch"]) || 6; 
+    let stitch_height = parseInt(getURLParams()["height"]) || 10; 
+    let thresh = parseInt(getURLParams()["thresh"]) || 45; 
     original_image.resize(800,800);
+    original_image.loadPixels();
     segments = [];
     createCanvas(800, 800);
     background(255);
     image(original_image, 0,0);
     //make_pattern(10, 6, 20); 
-    make_pattern(10,6,10);
+    make_pattern(rows,base_stitch,stitch_height);
     segments.forEach(function(e){ 
         e.sample_image(original_image); 
-        e.draw(); 
     }); 
+    segments.forEach(function(e){
+        e.dither(thresh)
+        e.draw();
+    })
     /*for (let i = 0; i < segments.length; i++){
         segments[i].sample_image(original_image);
         segments[i].draw();

@@ -1,327 +1,47 @@
-<!DOCTYPE html> 
+<!doctype html>
 <html>
-    <head>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.5.16/p5.js"></script>
-    </head>
-    <body>
-        <script>
-
-var segments;
-var rows;
-
-function Segment(r1, r2, theta1, theta2){
-    this.r1 = r1;
-    this.r2 = r2;
-    //Swap so that r1 is greater than r2 if not already
-    if (r1 < r2){
-        this.r1 = r2;
-        this.r2 = r1;
-    }
-    this.theta1 = theta1;
-    this.theta2 = theta2;
-    this.area = abs(((theta1-theta2)/2)*((r1*r1) - (r2*r2)));
-    this.color = color(100, 255, 155, 1);
-    //this.colorsum = [0,0,0,0];
-}
-
-Segment.prototype.is_inside = function(x, y){
-    //r1 is greater than r2
-    let d2 = x*x+y*y; 
-    //console.log(th);
-    //console.log(d, th)
-    //Process of elimination: is it inside r1 and outside r2?
-    if(d2 < this.r1*this.r1 && d2 > this.r2 * this.r2){
-        let th = createVector(x,y).heading();
-        if(th > this.theta1 && th < this.theta2){
-                return true;
-        }
-    }
-    return false;
-}
-
-
-Segment.prototype.draw = function(){
-    push();
-    translate(width/2, height/2);
-    stroke(100);
-    fill(this.color);
-    let pt = polarToRect(this.r2, this.theta1);
-    beginShape();
-    vertex(pt.x, pt.y);
-    pt = polarToRect(this.r1, this.theta1);
-    vertex(pt.x, pt.y);
-    pt = polarToRect(this.r1, this.theta2);
-    vertex(pt.x, pt.y);
-    pt = polarToRect(this.r2, this.theta2);
-    vertex(pt.x, pt.y);
-    endShape(CLOSE);
-    pop();
-}
-
-Segment.prototype.sample_image = function(image){
-    let colorsum = [0,0,0,0];
-    let div = 4;
-    let rstep = (this.r1-this.r2)/div;
-    //console.log(rstep);
-    for(let r = this.r2; r < this.r1; r+=rstep){
-        let thetastep = (this.theta2 - this.theta1) /div;
-    //console.log(thetastep);
-        for(let t = this.theta1; t < this.theta2; t+= thetastep){
-            let p = polarToRect(r, t)
-            //console.log(p);
-            let start = Math.round(p.x+width/2) +  Math.round((p.y+height/2))*image.width;
-            start *= 4;
-            let pixel = image.pixels.slice(start, start+4)
-            pixel.forEach((e, i) => colorsum[i] += e);
-        }
-    }
-    console.log("Done!");
-    colorsum.forEach((e,i) => {colorsum[i] = colorsum[i] / (div*div)})
-    this.color = color(colorsum);
-}
-
-// return a list of neighbors for the next step in dithering
-// Right now: next one in sequence plus everything touching in next row
-Segment.prototype.get_neighbors = function(){
-    let neighbors = new Set();
-    rows.forEach((row, i, arr)=>{
-        if (row[0].r1 == this.r1){
-            row.forEach((seg, i, arr) => {
-                if (seg === this){
-                    //index found
-                    if (i+1 < arr.length)
-                        neighbors.add(arr[i+1]);
-                    //otherwise, that spot was already processed, do not send error!
-                }
-            });
-            if (i+1 < arr.length){
-                let nextRow = arr[i+1];
-                nextRow.forEach((seg, i, arr)=>{
-                    //if above
-                    if ((seg.theta2 >= this.theta1 && seg.theta2 < this.theta2)|| 
-                        (seg.theta1 >= this.theta1 && seg.theta2 <= this.theta2)||
-                        (seg.theta1 <= this.theta2 && seg.theta2 > this.theta2)){
-                        neighbors.add(seg);
-                    }
-                })
+  <head>
+    <title>Crochet Fillet in the Round</title>
+    <script
+        src="https://code.jquery.com/jquery-3.2.1.min.js"
+          integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+            crossorigin="anonymous"></script>
+          <style>
+            ul {
+              list-style-type: none;
             }
-        }
-    })
-    console.log(neighbors);
-    return neighbors;
-}
-
-// black and white for now
-Segment.prototype.dither = function(threshold){
-    let divisor = 6;
-    let lastColor = this.color;
-    this.color = lightness(lastColor) > threshold? color(255): color(0);
-    //get neighbors and pass on error
-    let neighbors = this.get_neighbors();
-    console.log(neighbors.size, " Neighbors");
-    let error = [0,0,0,0];
-    this.color.levels.forEach((e, i) =>{
-        error[i] = (e - lastColor.levels[i])/divisor;
-    })
-    neighbors.forEach((n)=>{
-        let nc = color(n.color);
-        nc.levels.forEach((e,i,arr) =>{
-            arr[i] += error[i];
-        })
-        n.color = color(nc.levels);
-    })
-}
-
-/*
-Segment.prototype.sample_image = function(image){
-    // TODO optimize by setting bounding box around rough area
-    let colorsum = [0,0,0,0];
-    //bounding box
-    let l1 = this.r1*2;
-    let l2 = sqrt(2) * this.r2;
-    for (let x = (width -  l1)/2 ; x < ( width +  l1)/2 ; x++){
-        //if (x > (width - l2)/2 && x < (width + l2)/2)
-            //x = (width +l2)/2;
-            ///
-        for (let y = ( height- l1)/2; y < ( height + l1)/2 ; y++){
-            /*if (y > (height - l2)/2 && y < (height + l2)/2)
-                y = (height +l2)/2;
-                */
-            //map coord to image
-            //(y < (height - l2)/2 || y > (height + l2)/2) && 
-            /*if (x>(width-l2)/2 && x <(width+l2)/2 && y >(height-l2)/2 && y < (height+l2)/2){
-                y = (height+l2)/2;
-            }/
-            if(this.is_inside(x-width/2, y-height/2)){
-            let start = Math.round(x+width/2) +  Math.round(y+height/2)*image.width;
-            start *= 4;
-            let pixel = image.pixels.slice(start, start+4)
-            let c = pixel;
-                c.forEach(function(e, i){
-                    colorsum[i] += e;
-                    });
-                //console.log(colorsum);
-            }
-        }
-    }
-    console.log("done");
-    this.color = color(colorsum[0]/this.area, colorsum[1]/this.area, 
-                    colorsum[2]/this.area, colorsum[3]/this.area);
-}
-    */
-
-function make_pattern(row_count, base_stitch_count, row_height){
-    segments = [];
-    //create row
-    rows = [];
-    for (var i = 0; i < row_count; i++){
-        var row = []
-        var r = row_height * (i+1);
-        var lr = row_height * i;
-        var theta = -PI;
-        var stitch_count = base_stitch_count * (i+1);
-        var theta_inc = TWO_PI/stitch_count;
-        for (var s = 0; s < stitch_count; s++){
-            var theta1 = theta;
-            theta += theta_inc;
-            var theta2 = theta;
-            segments.push(new Segment(r, lr, theta1, theta2));
-            row.push(segments[segments.length - 1]);
-        }
-        rows.push(row);
-    }
-}
-
-/*function drawRound(row_count, base_stitch_count, row_height){
-    push();
-    //Center screen
-    translate(width/2, height/2);
-    for (var i = 0; i < row_count; i++){
-        var r = row_height * (i+1);
-        var lr = row_height * i; //height of row beneath this one, "lower r"
-        var theta = -PI;
-        var stitch_count = base_stitch_count * (i+1);
-        var theta_inc = TWO_PI/stitch_count;
-        noFill();
-        stroke(0);
-        //draw outside
-        ellipse(0,0,2*r, 2*r);
-        //draw segment
-        for (var s = 0; s < stitch_count; s++){
-            var last_theta = theta;
-            theta += theta_inc;
-            var start = polarToRect(lr, theta);
-            var end = polarToRect(r, theta);
-            var segment = {"r1": r, "r2":lr, "theta1":theta, "theta2":last_theta}
-            segments.push(segment)
-            line(start.x, start.y, end.x, end.y);
-        }
-    }
-}
-*/
-function polarToRect(r, theta){
-    return createVector(r*cos(theta), r*sin(theta));
-}
-
-function rectToPolar(x, y){
-    return {"r": dist(x,y, 0,0), "theta": atan2(y, x)}
-}
-
-/* FIXME name */
-//take two radius and the different in angle for a segment to get area
-function area_of_segment(r1, r2, theta){
-    return abs((theta/2)*((r1*r1) - (r2*r2)));
-}
-
-//check if point falls inside area described by segment
-//assume origin is 0,0, the center of the screen
-function is_in_segment(x, y, r1, r2, theta1, theta2){
-    if (r1 < r2){
-        var temp = r1;
-        r1 = r2;
-        r2 = temp;
-    }
-    //r1 is greater than r2
-    var d = dist(0,0, x,y); 
-    //Process of elimination: is it inside r1?
-    if(d < r1){
-        //outside r2?
-        if (d > r2)
-        {
-            th = atan2(y, x);
-            //between the thetas?
-            if (th > theta1 && th < theta2){
-                return true;
-            }
-        }      
-    }
-    return false;
-}
-
-// returns RGBA array
-function sample_image(x, y, image){
-    image.loadPixels();
-    x = Math.round(x);
-    y = Math.round(y);
-    let col = image.get(x,y);
-    return col;
-}
-
-function sample_image_polar(r, theta, image){
-    let v = polarToRect(r, theta);
-    return sample_image(v.x, v.y, image);
-}
-
-var original_image;
-function preload(){
-    let path = getURLParams()["src"] || "https://i.imgur.com/PQsJsGD.png";
-    original_image = loadImage(path);
-}
-
-function imageWrapper(image){
-    this.pixels = image.pixels;
-}
-
-imageWrapper.prototype.get = function(x, y){
-    let start = Math.round(y*this.img.width) + Math.round(x);
-    return this.pixels.slice(start, start+4);
-
-}
-
-function setup(){
-    //make image 800 px in smaller dimension
-    let rows = parseInt(getURLParams()["rows"]) || 40;
-    let base_stitch = parseInt(getURLParams()["basestitch"]) || 6; 
-    let stitch_height = parseInt(getURLParams()["height"]) || 10; 
-    let thresh = parseInt(getURLParams()["thresh"]) || 45; 
-    original_image.resize(800,800);
-    original_image.loadPixels();
-    segments = [];
-    createCanvas(800, 800);
-    background(255);
-    image(original_image, 0,0);
-    //make_pattern(10, 6, 20); 
-    make_pattern(rows,base_stitch,stitch_height);
-    segments.forEach(function(e){ 
-        e.sample_image(original_image); 
-    }); 
-    segments.forEach(function(e){
-        e.dither(thresh)
-        e.draw();
-    })
-    /*for (let i = 0; i < segments.length; i++){
-        segments[i].sample_image(original_image);
-        segments[i].draw();
-    }*/
-} 
-
-// Simple test function
-/*
-function mouseClicked(){
-    var inSeg = is_in_segment(mouseX-width/2, mouseY-height/2, 0, 20, 0*TWO_PI/6, 1*TWO_PI/6);
-    alert(inSeg ? "in segment" : "not in segment");
-}
-*/
-        </script>
-    </body>
+          </style>
+  </head>
+<body>
+  <h1>Crochet Fillet Pattern Maker</h1>
+  <p>This is a work in progress, which tries to use <a href="https://en.wikipedia.org/wiki/Dither">dithering</a> along polar coordinates to create a crochet fillet or colorwork crochet pattern for crochet in the round. It unfortunately runs quite slowly, which I hope to sort out someday.</p>
+  <form action="">
+    <ul>
+      <li><label for="src">Image Url (works well with imgur)</label></li>
+        <li><input name="src" type="url" value="https://i.imgur.com/PQsJsGD.png"></li>
+          <li><label for="rows">Rows</label></li>
+            <li><input type="number" name="rows" value=40></li>
+              <li><label for="basestitch">Base Stitch Count</label></li>
+                <li><input type="number" name="basestitch" value=6></li>
+                  <li><label for="height">Stitch Height (in pixels)</label></li>
+                    <li><input type="number" name="height" value=10></li>
+                      <li><label for="thresh">Treshhold for dithering (0 = lightest, 100 = darkest)</label></li>
+                        <li><input type="number" name="thresh" value=45></li>
+                          <li><input type="submit" value="Render Pattern"></li>
+    </ul>
+  </form>
+  <iframe src="" width=800 height=800>
+  </iframe>
+  <script>
+    $(function(){
+      $("form").submit(function(event){
+       // make parameters
+        data = $("form").serialize();
+        //https://mccartykim.github.io/crochet_fillet/index.html?src=https://upload.wikimedia.org/wikipedia/en/2/24/Lenna.png&thresh=60
+        $("iframe").attr("src", "pattern.html?" + data);
+        event.preventDefault();
+      });
+    });
+  </script>
+</body>
 </html>
